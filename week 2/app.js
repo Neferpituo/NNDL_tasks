@@ -559,8 +559,16 @@ async function updateMetrics() {
     document.getElementById('threshold-value').textContent = threshold.toFixed(2);
     
     // Get predictions and labels as arrays
-    const predVals = await validationPredictions.array();
+    const predValsRaw = await validationPredictions.array();
     const trueVals = await validationLabels.array();
+    
+    // FIX: Ensure predVals is flattened to 1D array
+    const predVals = predValsRaw.map(p => {
+        if (Array.isArray(p)) {
+            return p[0]; // Extract first element if it's an array
+        }
+        return p; // Already a number
+    });
     
     // Calculate confusion matrix
     let tp = 0, tn = 0, fp = 0, fn = 0;
@@ -620,6 +628,14 @@ async function updateMetrics() {
 
 // Plot ROC curve
 async function plotROC(trueLabels, predictions) {
+    // FIX: Ensure predictions is flattened to 1D array
+    const predsFlat = predictions.map(p => {
+        if (Array.isArray(p)) {
+            return p[0]; // Extract first element if it's an array
+        }
+        return p; // Already a number
+    });
+    
     // Calculate TPR and FPR for different thresholds
     const thresholds = Array.from({ length: 101 }, (_, i) => i / 100);
     const rocData = [];
@@ -627,8 +643,8 @@ async function plotROC(trueLabels, predictions) {
     thresholds.forEach(threshold => {
         let tp = 0, fn = 0, fp = 0, tn = 0;
         
-        for (let i = 0; i < predictions.length; i++) {
-            const prediction = predictions[i] >= threshold ? 1 : 0;
+        for (let i = 0; i < predsFlat.length; i++) {
+            const prediction = predsFlat[i] >= threshold ? 1 : 0;
             const actual = trueLabels[i];
             
             if (actual === 1) {
@@ -775,7 +791,15 @@ async function predict() {
         
         // Make predictions
         testPredictions = model.predict(testFeatures);
-        const predValues = await testPredictions.array();
+        const predValuesRaw = await testPredictions.array();
+        
+        // FIX: Ensure predValues is flattened to 1D array
+        const predValues = predValuesRaw.map(p => {
+            if (Array.isArray(p)) {
+                return p[0]; // Extract first element if it's an array
+            }
+            return p; // Already a number
+        });
         
         // Create prediction results
         const results = preprocessedTestData.passengerIds.map((id, i) => ({
@@ -831,10 +855,29 @@ function createPredictionTable(data) {
         tr.appendChild(tdSurvived);
         
         const tdProb = document.createElement('td');
-        tdProb.textContent = row.Probability.toFixed(4);
-        // Color based on probability
-        if (row.Probability >= 0.7) tdProb.style.color = 'green';
-        else if (row.Probability <= 0.3) tdProb.style.color = 'red';
+        
+        // FIX: Safe handling of probability value
+        let probValue = row.Probability;
+        
+        // Ensure it's a number
+        if (typeof probValue !== 'number') {
+            if (Array.isArray(probValue)) {
+                probValue = probValue[0];
+            }
+            probValue = parseFloat(probValue);
+        }
+        
+        // If still not a number, show N/A
+        if (isNaN(probValue)) {
+            tdProb.textContent = 'N/A';
+            tdProb.style.color = 'gray';
+        } else {
+            tdProb.textContent = probValue.toFixed(4);
+            // Color based on probability
+            if (probValue >= 0.7) tdProb.style.color = 'green';
+            else if (probValue <= 0.3) tdProb.style.color = 'red';
+        }
+        
         tr.appendChild(tdProb);
         
         table.appendChild(tr);
@@ -855,7 +898,15 @@ async function exportResults() {
     
     try {
         // Get predictions
-        const predValues = await testPredictions.array();
+        const predValuesRaw = await testPredictions.array();
+        
+        // FIX: Ensure predValues is flattened to 1D array
+        const predValues = predValuesRaw.map(p => {
+            if (Array.isArray(p)) {
+                return p[0]; // Extract first element if it's an array
+            }
+            return p; // Already a number
+        });
         
         // Create submission CSV (PassengerId, Survived)
         let submissionCSV = 'PassengerId,Survived\n';
@@ -971,9 +1022,20 @@ KEY FIXES APPLIED:
 1. CSV parsing now handles commas inside quoted fields
 2. Confusion matrix properly displays with async data handling
 3. Feature importance analysis added via "Sigmoid Gate" approach
+4. Fixed .toFixed() error by flattening prediction arrays
 
 REUSABILITY:
 - Schema configuration at top allows adaptation to other datasets
 - Modular functions for each pipeline step
 - Comprehensive error handling throughout
 */
+
+// Initialize the application when the page loads
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Titanic Survival Classifier loaded successfully!');
+    console.log('Instructions:');
+    console.log('1. Load train.csv and test.csv files');
+    console.log('2. Follow the step-by-step process: Inspect → Preprocess → Create Model → Train');
+    console.log('3. Use the threshold slider to adjust classification sensitivity');
+    console.log('4. Analyze feature importance to understand what drives predictions');
+});
